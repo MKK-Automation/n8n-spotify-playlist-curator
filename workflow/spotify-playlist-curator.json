@@ -1,0 +1,2911 @@
+{
+  "name": "Spotify Playlist Curator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🎧       Spotify Playlist Curator (Chat)\n\nTell an AI agent how you want your music organised and it sorts your **Liked Songs** into playlists for you. New likes are picked up on the next run, and you can reuse playlists you already have.\n\n### How it works\n1. You chat with the **AI agent** (sections 1–2).\n2. The agent picks one of six **tools** (section 3): list, create or adopt playlists, sort, retry, re-check.\n3. Each tool runs different parts of the **sorter brain** further down (sections 4–13), which talks to Spotify and the AI model.\n4. Songs are classified in batches of 50 and added to the matching playlist. Songs the AI can't place go to an **Unsorted songs** playlist that you can retry at the end of the sort.\n5. A **data table** remembers which playlists are categories (by Spotify ID), so you can rename your playlists freely.\n\n### SAMPLE PROMPTS\n- *\"Create playlists for house, techno and everything else\"*\n- *\"Use my playlist Gym as the workout category\"*\n- *\"Sort all my liked songs\"*\n- *\"Retry the unsorted songs\"*\n\n### Legend\n🔑 needs your **Spotify** credential\n🤖 needs your **AI** credential\n🗂️ uses the **data table**\n⚙️ pick **this workflow** in the node",
+        "height": 640,
+        "width": 620,
+        "color": 4
+      },
+      "id": "f3000000-0000-4000-8000-000000000101",
+      "name": "Setup Guide",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🧠 The Sorter Brain \nThis part starts when the agent calls a tool. The tool tells it what to do: list, create, adopt, sort, retry or re-check. Runs of this part appear separately in the **Executions** tab. Nodes marked 🔑 need your Spotify credential.",
+        "height": 110,
+        "width": 1480,
+        "color": 6
+      },
+      "id": "f3000000-0000-4000-8000-000000000102",
+      "name": "Sub-workflow note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000001",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        16
+      ],
+      "webhookId": "5430c882-06b4-4338-a899-8e646da4bb3e"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a friendly Spotify playlist curator. You help the user sort their Liked Songs into playlists.\n\n# How sorting works\nSorting uses 'categories'. A category is a playlist that holds songs matching a rule. Categories are either new playlists the curator created or EXISTING playlists the user adopted. The curator remembers each category by its Spotify playlist ID and keeps the rule itself, so the user can rename or edit these playlists freely without breaking anything. One category is the catch-all (default) for songs that fit nothing else, so the whole library is split among the categories. Songs the sorter cannot place go to an unsorted playlist. Spotify no longer provides genre data, so songs are classified from the model's own knowledge of the artist and song; it is good but not perfect.\n- To see what exists, use 'List categories'. It also returns the user's other playlists with names and song counts. When asked about playlists, report the categories, the unsorted playlist and the other playlists (names and counts).\n- If the user already has playlists that should serve as categories, use 'Adopt playlist' with the playlist's exact current name, a rule, and isDefault=true only for the catch-all. Confirm first. Adopting does not change the playlist's name, description or songs. An existing playlist for unplaced songs can be adopted with role='unsorted'; otherwise one is created automatically with the first new categories.\n- To make brand-new categories, use 'Create categories' ONCE with ALL the categories together as a JSON array of {name, description, isDefault}. The playlist is created with exactly that name. Never call it more than once at a time, and never in parallel. Propose the categories and rules and get the user's OK before creating or adopting. Make sure exactly one category is the catch-all.\n- SORTING: when the user asks to sort, categorize or classify their liked songs, just do it. Do NOT ask for confirmation and do NOT stop after one batch. Call 'Sort liked songs' ONCE and leave maxSongs empty: it then sorts every unsorted liked song in a single call (this can take many minutes, which is fine). Only pass maxSongs if the user asked for a specific number of songs. If the result still says songs remain (remainingToSort above 0) and the user did not ask for a limited number, call it once more; otherwise stop. Never call the sorting tools in parallel. When finished, give ONE summary: total songs sorted, the count per category, and a few example songs per category with the genre the model chose. Mention the unsorted count if any.\n- If a sort call fails partway, nothing is duplicated: songs already placed are skipped next time. Tell the user and offer to continue.\n- After a sort, if the result shows songs in the unsorted playlist (perCategory.unsorted above 0), call 'Retry unsorted songs'. Each call handles up to 100 unsorted songs. If it reports songs moved and stillInSource above 0, call it again (one call at a time, at most 5 calls) until stillInSource is 0 or nothing moves. Songs that stay unsorted after that could not be read from the model's answer; say so plainly and do not claim they did not fit any category.\n- Use 'Retry unsorted songs' also when the user wants the unsorted songs re-sorted.\n- Use 'Re-check songs' when the user thinks songs in a category were classified wrongly. It re-classifies up to 100 of the newest songs in that category (default: the catch-all) and moves the ones that belong in another category. Tell the user which songs moved.\n- Never invent results; report only what the tools return. If a tool returns an error or a message, explain it plainly.\n\n# Scope\nYou only curate playlists from the user's Liked Songs. If asked for anything else (such as controlling playback or finding new music), say that is outside what you do.\n\n# Style\nBe concise and friendly. Mention playlist names, never IDs.",
+          "maxIterations": 30
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000002",
+      "name": "Spotify Curator Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        1248,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-chat",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000003",
+      "name": "Agent Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "🤖 Add your AI credential (OpenRouter)"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "f3000000-0000-4000-8000-000000000004",
+      "name": "Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1408,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "description": "List the user's playlists as the curator sees them: the sorting categories (rule, catch-all flag, song count), the unsorted playlist, and the user's other own playlists with names and song counts. Call this to answer any question about the user's playlists and before creating, adopting or sorting.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "list"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000010",
+      "name": "List categories",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "description": "Create one or more sorting categories (playlists) in ONE call. Pass ALL the categories the user wants together as a JSON array, each with name, description (the rule for which songs belong) and isDefault (true only for the single catch-all). The unsorted playlist is created once automatically. Never call this tool more than once at the same time. Existing categories are not duplicated.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "create",
+            "newCategories": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('newCategories', `JSON array of the categories to create, for example [{\"name\":\"workout\",\"description\":\"hip-hop, rap, trap and gym tracks\",\"isDefault\":false},{\"name\":\"everything-else\",\"description\":\"all other songs\",\"isDefault\":true}]`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "newCategories",
+              "displayName": "newCategories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000011",
+      "name": "Create categories",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1728,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "description": "Sort ALL of the user's liked songs that are not yet in any category playlist (newest first) into the categories, in one call, working through them in batches of 50. Leave maxSongs empty to sort everything; only set it if the user asked for a specific number of songs. Returns how many were sorted, how many remain, per-category counts and a sample of where songs went. A big library can take many minutes. Requires at least one category.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "sort",
+            "maxSongs": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('maxSongs', `Only set this if the user asked for a specific number of songs. Leave empty to sort all unsorted songs.`, 'number', 10000) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "maxSongs",
+              "displayName": "maxSongs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000012",
+      "name": "Sort liked songs",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1888,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "description": "Re-try sorting the songs sitting in the 'unsorted' playlist into the categories, and move the ones that get placed. Up to 100 songs per call.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "retry"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000013",
+      "name": "Retry unsorted songs",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2048,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "action"
+            },
+            {
+              "name": "name"
+            },
+            {
+              "name": "description"
+            },
+            {
+              "name": "isDefault",
+              "type": "boolean"
+            },
+            {
+              "name": "maxSongs",
+              "type": "number"
+            },
+            {
+              "name": "role"
+            },
+            {
+              "name": "newCategories"
+            }
+          ]
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000014",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== OPTIONAL ADVANCED SETTINGS (the defaults work for most people) =====\nreturn [{ json: {\n  // Only used to recognise playlists created by earlier versions ('[Curator] name'). New playlists get plain names.\n  playlistPrefix: '[Curator] ',\n  // Name of the playlist that collects songs the sorter could not place.\n  fallbackName: 'Unsorted songs',\n  playlistsPublic: false,\n  defaultMaxSongs: 10000\n} }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000015",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        1056
+      ],
+      "notes": "Optional advanced settings. The defaults work for most people."
+    },
+    {
+      "parameters": {
+        "url": "https://api.spotify.com/v1/me",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000016",
+      "name": "Get Me",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        1056
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · reads your profile"
+    },
+    {
+      "parameters": {
+        "url": "https://api.spotify.com/v1/me/playlists?limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000017",
+      "name": "Get Playlist Total",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        1056
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · counts your playlists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const total = $input.first().json.total || 0;\nconst pages = Math.max(1, Math.ceil(total / 50));\nreturn Array.from({ length: pages }, (_, p) => ({ json: { offset: p * 50 } }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000018",
+      "name": "Plan Playlist Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.spotify.com/v1/me/playlists?limit=50&offset={{ $json.offset }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000019",
+      "name": "Fetch My Playlists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        1056
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · lists your playlists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst input = $('When Executed by Another Workflow').first().json;\nconst me = $('Get Me').first().json;\nconst rows = $('Registry Snapshot').first().json.rows || [];\nconst reg = new Map(rows.map(r => [r.playlistId, r]));\nconst decode = t => String(t || '').replace(/&quot;/g, '\"').replace(/&#x27;/g, \"'\").replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');\nconst prefix = s.playlistPrefix;\nconst legacyUnsortedName = prefix + 'unsorted';\nconst unsortedCandidates = [];\nconst categories = [];\nconst others = [];\nconst toRegister = [];\nconst seenIds = new Set();\nconst usedNames = new Set();\nlet followed = 0;\nlet totalPlaylists = 0;\nfor (const page of $input.all()) {\n  for (const p of (page.json.items || [])) {\n    if (!p) continue;\n    totalPlaylists++;\n    const url = p.external_urls && p.external_urls.spotify;\n    const tracks = p.items && typeof p.items.total === 'number' ? p.items.total : null;\n    if (!p.owner || p.owner.id !== me.id) { followed++; continue; }\n    seenIds.add(p.id);\n    const rawDesc = decode(p.description);\n    const name = String(p.name || '');\n    const hasPrefix = name.startsWith(prefix);\n    const clean = rawDesc.replace(/\\[curator:unsorted\\]|\\[curator\\]|\\[default\\]/gi, '').replace(/\\s+/g, ' ').trim();\n    const r = reg.get(p.id);\n    let role = null;\n    let rule = '';\n    let isDefault = false;\n    if (r) { role = r.role === 'unsorted' ? 'unsorted' : 'category'; rule = r.rule; isDefault = r.isDefault; }\n    else if ((hasPrefix && name === legacyUnsortedName) || /\\[curator:unsorted\\]/i.test(rawDesc)) { role = 'unsorted'; }\n    else if (hasPrefix || /\\[curator\\]/i.test(rawDesc)) { role = 'category'; rule = clean; isDefault = /\\[default\\]/i.test(rawDesc); }\n    if (role === 'unsorted') { unsortedCandidates.push({ id: p.id, name, url, tracks, registered: !!r }); continue; }\n    if (role === 'category') {\n      const display = hasPrefix ? name.slice(prefix.length) : name;\n      let unique = display;\n      let n = 2;\n      while (usedNames.has(unique.toLowerCase())) { unique = display + ' (' + (n++) + ')'; }\n      usedNames.add(unique.toLowerCase());\n      categories.push({ name: unique, playlistName: name, id: p.id, url, tracks, criteria: rule, isDefault });\n      if (!r) toRegister.push({ playlistId: p.id, role: 'category', rule: rule.slice(0, 270), isDefault: String(isDefault) });\n      continue;\n    }\n    others.push({ name, id: p.id, url, tracks, description: clean });\n  }\n}\nconst chosen = unsortedCandidates.find(c => c.registered) || unsortedCandidates[0] || null;\nconst fallback = chosen ? { id: chosen.id, name: chosen.name, url: chosen.url, tracks: chosen.tracks } : null;\nif (chosen && !chosen.registered) toRegister.push({ playlistId: chosen.id, role: 'unsorted', rule: '', isDefault: 'false' });\nconst missing = rows.filter(r => !seenIds.has(r.playlistId)).map(r => ({ playlistId: r.playlistId, role: r.role, rule: r.rule }));\nreturn [{ json: { action: String(input.action || '').toLowerCase(), name: input.name, description: input.description, isDefault: !!input.isDefault, role: String(input.role || '').toLowerCase(), maxSongs: input.maxSongs, newCategories: input.newCategories, categories, fallback, others, followed, totalPlaylists, toRegister, missing } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000020",
+      "name": "Load Categories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f3000000-0000-4000-8000-000000000201",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f3000000-0000-4000-8000-000000000202",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f3000000-0000-4000-8000-000000000203",
+                    "leftValue": "={{ ['sort', 'retry', 'recheck'].includes($json.action) ? 'run' : 'other' }}",
+                    "rightValue": "run",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "run"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f3000000-0000-4000-8000-000000000211",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "adopt",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "adopt"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000021",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1552,
+        1280
+      ],
+      "notesInFlow": true,
+      "notes": "Sends the request down the right lane →"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst categories = d.categories.map(c => ({ name: c.name, rule: c.criteria || '(no rule yet)', catchAll: c.isDefault, songsInPlaylist: c.tracks, link: c.url }));\nconst others = d.others.map(o => ({ name: o.name, songs: o.tracks, link: o.url }));\nconst unsorted = d.fallback ? { name: d.fallback.name, songs: d.fallback.tracks, link: d.fallback.url } : null;\nlet message = categories.length\n  ? 'These are the current sorting categories.'\n  : 'No sorting categories are set up yet. The user has ' + others.length + ' other playlists of their own (see otherOwnPlaylists); they can be adopted as categories or left untouched.';\nconst missingCount = (d.missing || []).length;\nif (missingCount) message += ' ' + missingCount + ' registered playlist(s) no longer exist in Spotify (deleted or unfollowed) and are ignored.';\nreturn [{ json: { totalPlaylistsOnAccount: d.totalPlaylists, ownPlaylists: categories.length + (unsorted ? 1 : 0) + others.length, followedPlaylists: d.followed, categories, unsortedPlaylist: unsorted, otherOwnPlaylists: others, message } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000022",
+      "name": "Format Category List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst d = $input.first().json;\nconst fail = message => [{ json: { toCreate: [], notes: [], error: true, message, anyToCreate: false } }];\nlet wanted = [];\nif (d.newCategories) {\n  try {\n    const parsed = typeof d.newCategories === 'string' ? JSON.parse(d.newCategories) : d.newCategories;\n    wanted = Array.isArray(parsed) ? parsed : [parsed];\n  } catch (e) {\n    return fail('Could not read the category list. Pass a JSON array like [{\"name\":\"workout\",\"description\":\"...\",\"isDefault\":false}].');\n  }\n} else if (d.name) {\n  wanted = [{ name: d.name, description: d.description, isDefault: d.isDefault }];\n}\nwanted = wanted.filter(w => w && String(w.name || '').trim());\nif (!wanted.length) return fail('At least one category with a name is required.');\nconst notes = [];\nconst toCreate = [];\nconst seen = new Set(d.categories.map(c => c.name.toLowerCase()));\nconst ownNames = new Set(d.others.map(o => String(o.name).trim().toLowerCase()));\nfor (const w of wanted) {\n  const name = String(w.name).trim();\n  if (seen.has(name.toLowerCase())) {\n    notes.push('Category \"' + name + '\" already exists, so it was not created again.');\n    continue;\n  }\n  if (ownNames.has(name.toLowerCase())) {\n    notes.push('You already have a playlist named \"' + name + '\", so it was not created again. Adopt it instead if it should be a category.');\n    continue;\n  }\n  seen.add(name.toLowerCase());\n  const rule = String(w.description || '').replace(/\\[(curator:unsorted|curator|default)\\]/gi, '').trim().slice(0, 270);\n  const isDefault = w.isDefault === true || String(w.isDefault).toLowerCase() === 'true';\n  toCreate.push({ fullName: name, description: rule, public: !!s.playlistsPublic, role: 'category', rule, isDefault });\n}\nif (!d.fallback) {\n  toCreate.push({ fullName: s.fallbackName, description: 'Songs the sorter could not place. Re-sorted on request.', public: !!s.playlistsPublic, role: 'unsorted', rule: '', isDefault: false });\n}\nreturn [{ json: { toCreate, notes, anyToCreate: toCreate.length > 0 } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000023",
+      "name": "Plan Creation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000204",
+              "leftValue": "={{ $json.anyToCreate ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000024",
+      "name": "Any To Create?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2192,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.toCreate.map(x => ({ json: x }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000025",
+      "name": "Expand To Create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.spotify.com/v1/me/playlists",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": {{ JSON.stringify($json.fullName) }},\n  \"description\": {{ JSON.stringify($json.description) }},\n  \"public\": {{ $json.public }}\n}",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000026",
+      "name": "Create Playlist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2608,
+        1312
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · creates a playlist"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Plan Creation').first().json;\nconst created = $('Create Playlist').isExecuted ? $('Create Playlist').all().map(i => i.json) : [];\nreturn [{ json: {\n  created: created.map(c => ({ name: c.name, link: c.external_urls && c.external_urls.spotify })),\n  notes: p.notes || [],\n  message: p.error ? p.message : (created.length ? 'Created ' + created.length + ' playlist(s).' : 'Nothing new to create.')\n} }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000027",
+      "name": "Create Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst d = $('Load Categories').first().json;\nconst fail = message => [{ json: { ok: false, message, action: d.action } }];\nif (!d.categories.length) return fail('No categories exist yet. Create a category or adopt one of the existing playlists first.');\nif (!d.fallback) return fail('There is no unsorted playlist yet. Create any new category (this also creates the unsorted playlist) or adopt an existing playlist with role unsorted.');\nconst playlists = d.categories.map(c => ({ key: c.name, id: c.id }));\nplaylists.push({ key: '__fallback', id: d.fallback.id });\nconst map = {};\nplaylists.forEach(p => { map[p.key] = p.id; });\nconst maxSongs = Math.max(1, Math.floor(Number(d.maxSongs) || s.defaultMaxSongs));\nreturn [{ json: { ok: true, action: d.action, playlists, map, maxSongs } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000028",
+      "name": "Preflight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000205",
+              "leftValue": "={{ $json.ok ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000029",
+      "name": "Preflight OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2192,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Preflight').first().json.playlists.map(p => ({ json: { key: p.key, id: p.id } }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000030",
+      "name": "Plan Count Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        1584
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.spotify.com/v1/playlists/{{ $json.id }}?fields=items.total",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000031",
+      "name": "Get Playlist Counts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        1584
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · counts songs per playlist"
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $('Plan Count Requests').all().map(i => i.json);\nconst counts = $input.all();\nconst totalOf = idx => (counts[idx] && counts[idx].json.items ? counts[idx].json.items.total : 0);\nconst expectedTotal = plan.reduce((a, _, idx) => a + totalOf(idx), 0);\nconst out = [];\nplan.forEach((p, idx) => {\n  const pages = Math.max(1, Math.ceil(totalOf(idx) / 50));\n  for (let pg = 0; pg < pages; pg++) {\n    out.push({ json: { key: p.key, id: p.id, offset: pg * 50, expectedTotal } });\n  }\n});\nreturn out;"
+      },
+      "id": "f3000000-0000-4000-8000-000000000032",
+      "name": "Plan Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        1584
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.spotify.com/v1/playlists/{{ $json.id }}/items?limit=50&offset={{ $json.offset }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000033",
+      "name": "Fetch Playlist Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        656,
+        1584
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · reads playlist songs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $('Plan Pages').all().map(i => i.json);\nconst pages = $input.all();\nconst known = new Set();\nconst playlistTracks = {};\nlet rawCount = 0;\npages.forEach((p, idx) => {\n  const meta = plan[idx] || {};\n  const entries = (p.json && p.json.items) || [];\n  for (const e of entries) {\n    rawCount++;\n    const t = e && (e.item || e.track);\n    if (t && t.uri) {\n      known.add(t.uri);\n      if (t.id && t.artists && t.artists[0]) {\n        (playlistTracks[meta.key] = playlistTracks[meta.key] || []).push({ id: t.id, uri: t.uri, name: t.name, artistId: t.artists[0].id, artistName: t.artists[0].name || 'Unknown', album: (t.album && t.album.name) || '', year: String((t.album && t.album.release_date) || '').slice(0, 4), addedAt: e.added_at || '' });\n      }\n    }\n  }\n});\nconst expected = plan.length ? plan[0].expectedTotal : 0;\nif (rawCount !== expected) {\n  throw new Error('Known-set mismatch: fetched ' + rawCount + ' playlist entries but playlists report ' + expected + '. Aborting to avoid duplicates.');\n}\nreturn [{ json: { known: [...known], playlistTracks, knownCount: known.size } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000034",
+      "name": "Build Known Set",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        1584
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000206",
+              "leftValue": "={{ $('Preflight').first().json.action === 'sort' ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000035",
+      "name": "Is Sort?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1072,
+        1584
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.spotify.com/v1/me/tracks?limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000036",
+      "name": "Get Liked Total",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        32,
+        1824
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · counts Liked Songs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const total = $input.first().json.total || 0;\nconst pages = Math.max(1, Math.ceil(total / 50));\nreturn Array.from({ length: pages }, (_, p) => ({ json: { offset: p * 50 } }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000037",
+      "name": "Plan Liked Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.spotify.com/v1/me/tracks?limit=50&offset={{ $json.offset }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000038",
+      "name": "Fetch Liked Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        1824
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · reads Liked Songs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pre = $('Preflight').first().json;\nconst known = new Set($('Build Known Set').first().json.known);\nconst seen = new Set();\nconst unknown = [];\nfor (const page of $input.all()) {\n  for (const it of ((page.json && page.json.items) || [])) {\n    const t = it && it.track;\n    if (!t || !t.id || !t.uri || !t.artists || !t.artists[0]) continue;\n    if (known.has(t.uri) || seen.has(t.uri)) continue;\n    seen.add(t.uri);\n    unknown.push({ id: t.id, uri: t.uri, name: t.name, artistId: t.artists[0].id, artistName: t.artists[0].name || 'Unknown', album: (t.album && t.album.name) || '', year: String((t.album && t.album.release_date) || '').slice(0, 4) });\n  }\n}\nconst queue = unknown.slice(0, pre.maxSongs);\nreturn [{ json: { queue, totalUnknown: unknown.length, remaining: unknown.length - queue.length } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000039",
+      "name": "Find Unknown Songs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000207",
+              "leftValue": "={{ $json.queue.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000040",
+      "name": "Any Unknown Songs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        864,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { index: $runIndex } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000041",
+      "name": "Batch Index",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $('Find Unknown Songs').first().json.queue;\nconst i = $('Batch Index').first().json.index;\nconst tracks = q.slice(i * 50, i * 50 + 50);\nconst artistIds = [...new Set(tracks.map(t => t.artistId).filter(Boolean))];\nreturn [{ json: { tracks, artistIds, hasMore: (i + 1) * 50 < q.length } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000042",
+      "name": "Take Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cats = $('Load Categories').first().json.categories;\nconst names = cats.map(c => c.name);\nconst def = (cats.find(c => c.isDefault) || cats[cats.length - 1]).name;\nconst catText = cats.map(c => `- \"${c.name}\": ${c.criteria || 'songs that fit the name \"' + c.name + '\"'}`).join('\\n');\n\nconst tracks = $('Take Batch').first().json.tracks;\nconst enriched = tracks.map(t => ({ id: t.id, uri: t.uri, name: t.name, artist: t.artistName, album: t.album || '', year: t.year || '' }));\n\nconst listText = enriched\n  .map((t, i) => `${i + 1}. \"${t.name}\" by ${t.artist}` + (t.album ? ` | album: ${t.album}${t.year ? ' (' + t.year + ')' : ''}` : ''))\n  .join('\\n');\nconst example = JSON.stringify([{ n: 1, genre: 'short genre label', category: names[0] }, { n: 2, genre: 'short genre label', category: names[names.length - 1] }]);\n\nconst prompt = `You are a music playlist sorter with deep knowledge of music. Spotify genre data is not available, so use your own knowledge of each artist and song (and the album and year) to decide.\n\nCategories:\n${catText}\n\nFor each track, first decide the song's most likely genre or style from your knowledge of the artist and the song, then choose the category whose rule best matches that genre. Only choose \"${def}\" when the track really does not match another category's rule; do not use it as a shortcut for songs you are unsure about - think about the artist's main genre first.\n\nTracks (numbered list):\n${listText}\n\nRespond with ONLY a raw JSON array of exactly ${enriched.length} objects, one for each track, no markdown formatting, no commentary. Each object has \"n\" (the track's number from the list above, 1 to ${enriched.length}), \"genre\" (a short genre label you decided on) and \"category\" (one of the category names exactly as written above). Include every track number exactly once. Example format:\n${example}`;\n\nreturn [{ json: { prompt, tracks: enriched } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000044",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        2480
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "f3000000-0000-4000-8000-000000000045",
+      "name": "Throttle Before Classify",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        2480
+      ],
+      "webhookId": "dd63f7e0-86cf-4581-aa7c-e1b6243fcb9a"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "batching": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000046",
+      "name": "Classify Batch",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2336,
+        2480
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-chat",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000047",
+      "name": "Classifier Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2336,
+        2688
+      ],
+      "notesInFlow": true,
+      "notes": "🤖 Add your AI credential (OpenRouter)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cats = $('Load Categories').first().json.categories;\nconst valid = cats.map(c => c.name);\nconst lookup = {};\nvalid.forEach(n => { lookup[n.toLowerCase()] = n; });\n\nconst first = $input.first().json;\nconst raw = (first.text ?? first.output ?? (first.response && first.response.text) ?? '').toString();\nlet parsed = [];\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n  if (!Array.isArray(parsed)) parsed = [];\n} catch (e) {\n  parsed = [];\n}\n\nconst tracks = $('Build Prompt').first().json.tracks;\n\n// Match answers to songs by the track number the model returned. Fall back to position only when the count is exactly right and no number is usable.\nconst byIndex = new Map();\nparsed.forEach((item, pos) => {\n  if (!item || typeof item !== 'object') return;\n  let n = Number(item.n);\n  if (!Number.isInteger(n) || n < 1 || n > tracks.length) {\n    if (parsed.length === tracks.length) n = pos + 1; else return;\n  }\n  if (!byIndex.has(n)) byIndex.set(n, item);\n});\n\nconst groups = {};\nvalid.forEach(n => { groups[n] = { uris: [], songs: [] }; });\ngroups['__fallback'] = { uris: [], songs: [] };\nlet unreadable = 0;\n\ntracks.forEach((t, i) => {\n  const item = byIndex.get(i + 1);\n  const cat = item ? item.category : undefined;\n  const genre = item ? String(item.genre || '') : '';\n  const canon = typeof cat === 'string' ? lookup[cat.trim().toLowerCase()] : undefined;\n  if (!canon) unreadable++;\n  const g = canon ? groups[canon] : groups['__fallback'];\n  g.uris.push(t.uri);\n  g.songs.push({ name: t.name, artist: t.artist, genre });\n});\n\nif (unreadable > 0) {\n  console.log('Could not read an answer for ' + unreadable + ' of ' + tracks.length + ' songs (model returned ' + parsed.length + ' entries) - those go to unsorted');\n}\n\nconst output = [];\nfor (const [category, g] of Object.entries(groups)) {\n  if (g.uris.length > 0) {\n    output.push({ json: { category, uris: g.uris, songs: g.songs } });\n  }\n}\nreturn output;"
+      },
+      "id": "f3000000-0000-4000-8000-000000000048",
+      "name": "Parse & Group by Category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2608,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.spotify.com/v1/playlists/{{ $('Preflight').first().json.map[$json.category] }}/items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"uris\": {{ JSON.stringify($json.uris) }}\n}",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000049",
+      "name": "Add To Playlist (Batched)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2784,
+        2480
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "notes": "🔑 Spotify credential · adds songs to playlists"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000050",
+      "name": "Consolidate Batch",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2992,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000208",
+              "leftValue": "={{ $('Take Batch').first().json.hasMore ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000051",
+      "name": "More Batches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3200,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pre = $('Preflight').first().json;\nconst d = $('Load Categories').first().json;\nconst all = $('Build Known Set').first().json.playlistTracks || {};\nlet sourceKey = '__fallback';\nif (pre.action === 'recheck') {\n  const wanted = String(d.name || '').trim().toLowerCase();\n  const cat = wanted ? d.categories.find(c => c.name.toLowerCase() === wanted) : (d.categories.find(c => c.isDefault) || null);\n  if (!cat) return [{ json: { tracks: [], sourceKey: null, totalInSource: 0, error: wanted ? 'No category named \"' + d.name + '\".' : 'Say which category to re-check.' } }];\n  sourceKey = cat.name;\n}\nconst pool = (all[sourceKey] || []).slice().sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));\nconst limit = pre.action === 'retry' ? 100 : Math.min(pre.maxSongs, 100);\nconst tracks = pool.slice(0, limit);\nreturn [{ json: { tracks, sourceKey, totalInSource: pool.length } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000052",
+      "name": "Prepare Retry Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000209",
+              "leftValue": "={{ $json.tracks.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000053",
+      "name": "Any Unsorted Songs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cats = $('Load Categories').first().json.categories;\nconst names = cats.map(c => c.name);\nconst def = (cats.find(c => c.isDefault) || cats[cats.length - 1]).name;\nconst catText = cats.map(c => `- \"${c.name}\": ${c.criteria || 'songs that fit the name \"' + c.name + '\"'}`).join('\\n');\n\nconst tracks = $('Prepare Retry Batch').first().json.tracks;\nconst enriched = tracks.map(t => ({ id: t.id, uri: t.uri, name: t.name, artist: t.artistName, album: t.album || '', year: t.year || '' }));\n\nconst listText = enriched\n  .map((t, i) => `${i + 1}. \"${t.name}\" by ${t.artist}` + (t.album ? ` | album: ${t.album}${t.year ? ' (' + t.year + ')' : ''}` : ''))\n  .join('\\n');\nconst example = JSON.stringify([{ n: 1, genre: 'short genre label', category: names[0] }, { n: 2, genre: 'short genre label', category: names[names.length - 1] }]);\n\nconst prompt = `You are a music playlist sorter with deep knowledge of music, re-checking songs that may have been placed in the wrong playlist. Spotify genre data is not available, so use your own knowledge of each artist and song (and the album and year) to decide.\n\nCategories:\n${catText}\n\nFor each track, first decide the song's most likely genre or style from your knowledge of the artist and the song, then choose the category whose rule best matches that genre. Only choose \"${def}\" when the track really does not match another category's rule.\n\nTracks (numbered list):\n${listText}\n\nRespond with ONLY a raw JSON array of exactly ${enriched.length} objects, one for each track, no markdown formatting, no commentary. Each object has \"n\" (the track's number from the list above, 1 to ${enriched.length}), \"genre\" (a short genre label you decided on) and \"category\" (one of the category names exactly as written above). Include every track number exactly once. Example format:\n${example}`;\n\nreturn [{ json: { prompt, tracks: enriched } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000055",
+      "name": "Build Retry Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "batching": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000056",
+      "name": "Reclassify Fallback",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        832,
+        3072
+      ],
+      "retryOnFail": true,
+      "maxTries": 6,
+      "waitBetweenTries": 30000
+    },
+    {
+      "parameters": {
+        "jsCode": "const cats = $('Load Categories').first().json.categories;\nconst valid = cats.map(c => c.name);\nconst lookup = {};\nvalid.forEach(n => { lookup[n.toLowerCase()] = n; });\n\nconst first = $input.first().json;\nconst raw = (first.text ?? first.output ?? (first.response && first.response.text) ?? '').toString();\nlet parsed = [];\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n  if (!Array.isArray(parsed)) parsed = [];\n} catch (e) {\n  parsed = [];\n}\n\nconst prep = $('Prepare Retry Batch').first().json;\nconst tracks = $('Build Retry Prompt').first().json.tracks;\n\nconst byIndex = new Map();\nparsed.forEach((item, pos) => {\n  if (!item || typeof item !== 'object') return;\n  let n = Number(item.n);\n  if (!Number.isInteger(n) || n < 1 || n > tracks.length) {\n    if (parsed.length === tracks.length) n = pos + 1; else return;\n  }\n  if (!byIndex.has(n)) byIndex.set(n, item);\n});\n\nconst groups = {};\nvalid.forEach(n => { groups[n] = []; });\nconst allResolved = [];\nconst movedSongs = [];\nlet unchanged = 0;\nlet unreadable = 0;\n\ntracks.forEach((t, i) => {\n  const item = byIndex.get(i + 1);\n  const cat = item ? item.category : undefined;\n  const genre = item ? String(item.genre || '') : '';\n  const canon = typeof cat === 'string' ? lookup[cat.trim().toLowerCase()] : undefined;\n  if (!canon) { unreadable++; unchanged++; return; }\n  if (canon === prep.sourceKey) { unchanged++; return; }\n  groups[canon].push(t.uri);\n  allResolved.push(t.uri);\n  movedSongs.push(t.artist + ' - ' + t.name + ' (' + genre + ') -> ' + canon);\n});\n\nconst adds = [];\nfor (const [category, uris] of Object.entries(groups)) {\n  if (uris.length > 0) adds.push({ category, uris });\n}\nreturn [{ json: { adds, allResolved, anyResolved: allResolved.length > 0, unchanged, unreadable, movedSongs: movedSongs.slice(0, 30), sourceKey: prep.sourceKey } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000057",
+      "name": "Parse Retry Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000210",
+              "leftValue": "={{ $json.anyResolved ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000058",
+      "name": "Any Resolved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1440,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Parse Retry Results').first().json.adds.map(a => ({ json: a }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000059",
+      "name": "Expand Adds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.spotify.com/v1/playlists/{{ $('Preflight').first().json.map[$('Expand Adds').item.json.category] }}/items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"uris\": {{ JSON.stringify($('Expand Adds').item.json.uris) }}\n}",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000060",
+      "name": "Add Reallocated Tracks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2304,
+        3072
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · adds moved songs"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000061",
+      "name": "Consolidate Reallocation",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2512,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.spotify.com/v1/playlists/{{ $('Preflight').first().json.map[$('Parse Retry Results').first().json.sourceKey] }}/items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"items\": {{ JSON.stringify($('Parse Retry Results').first().json.allResolved.map(u => ({uri: u}))) }}\n}",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000062",
+      "name": "Remove Moved From Source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1664,
+        3072
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · removes moved songs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pre = $('Preflight').first().json;\nif (!pre.ok) return [{ json: { status: 'cannot_run', message: pre.message } }];\nif (pre.action === 'retry' || pre.action === 'recheck') {\n  const prep = $('Prepare Retry Batch').isExecuted ? $('Prepare Retry Batch').first().json : null;\n  if (!prep || prep.tracks.length === 0) return [{ json: { status: 'nothing_to_do', message: prep && prep.error ? prep.error : 'There are no songs to re-check in that playlist.' } }];\n  const res = $('Parse Retry Results').isExecuted ? $('Parse Retry Results').first().json : null;\n  const moved = res ? res.allResolved.length : 0;\n  const source = prep.sourceKey === '__fallback' ? 'unsorted' : prep.sourceKey;\n  return [{ json: { status: 'done', checked: prep.tracks.length, source, moved, unchanged: res ? res.unchanged : prep.tracks.length, unreadable: res ? (res.unreadable || 0) : 0, stillInSource: prep.totalInSource - moved, movedSongs: res ? res.movedSongs : [], message: 'Checked ' + prep.tracks.length + ' songs from \"' + source + '\" and moved ' + moved + '.' + ((res && res.unreadable) ? ' ' + res.unreadable + ' of the model answers could not be read, so those songs were left where they are; running it again usually fixes that.' : '') } }];\n}\nconst fu = $('Find Unknown Songs').isExecuted ? $('Find Unknown Songs').first().json : null;\nif (!fu || fu.queue.length === 0) return [{ json: { status: 'up_to_date', message: 'There are no new liked songs to sort.' } }];\nconst counts = {};\nconst songs = {};\nfor (let r = 0; r < 500; r++) {\n  let items;\n  try { items = $('Parse & Group by Category').all(0, r); } catch (e) { break; }\n  if (!items || !items.length) break;\n  for (const it of items) {\n    const c = it.json.category === '__fallback' ? 'unsorted' : it.json.category;\n    counts[c] = (counts[c] || 0) + it.json.uris.length;\n    songs[c] = (songs[c] || []).concat(it.json.songs || []);\n  }\n}\nfor (const c of Object.keys(songs)) {\n  songs[c] = songs[c].slice(0, 15).map(s => s.artist + ' - ' + s.name + (s.genre ? ' (' + s.genre + ')' : ''));\n}\nreturn [{ json: { status: 'done', sorted: fu.queue.length, remainingToSort: fu.remaining, perCategory: counts, sampleSongs: songs, message: 'Sorted ' + fu.queue.length + ' songs; ' + fu.remaining + ' liked songs are still unsorted.' } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000063",
+      "name": "Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3424,
+        3088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst fail = message => [{ json: { ok: false, message } }];\nconst wanted = String(d.name || '').trim().toLowerCase();\nif (!wanted) return fail('Tell me which existing playlist to adopt.');\nconst role = d.role === 'unsorted' ? 'unsorted' : 'category';\nconst managed = d.categories.find(c => c.playlistName.toLowerCase() === wanted || c.name.toLowerCase() === wanted) || (d.fallback && d.fallback.name.toLowerCase() === wanted ? d.fallback : null);\nif (managed) return fail('\"' + (managed.playlistName || managed.name) + '\" is already managed by the curator.');\nconst matches = d.others.filter(o => String(o.name).trim().toLowerCase() === wanted);\nif (matches.length === 0) {\n  const near = d.others.filter(o => String(o.name).toLowerCase().includes(wanted)).map(o => o.name).slice(0, 5);\n  return fail('No playlist of yours is named \"' + d.name + '\".' + (near.length ? ' Similar names: ' + near.join(', ') + '.' : ''));\n}\nif (matches.length > 1) return fail('You have ' + matches.length + ' playlists with that name; rename one first so I can tell them apart.');\nif (role === 'unsorted' && d.fallback) return fail('An unsorted playlist already exists (\"' + d.fallback.name + '\").');\nconst rule = String(d.description || '').replace(/\\[(curator:unsorted|curator|default)\\]/gi, '').trim().slice(0, 270);\nif (role === 'category' && !rule) return fail('Describe which songs belong in this playlist so I can record the rule.');\nreturn [{ json: { ok: true, role, target: { id: matches[0].id, name: matches[0].name, tracks: matches[0].tracks }, rule: role === 'unsorted' ? '' : rule, isDefault: role === 'category' && !!d.isDefault } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000065",
+      "name": "Plan Adoption",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000212",
+              "leftValue": "={{ $json.ok ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000066",
+      "name": "Can Adopt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2160,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Plan Adoption').first().json;\nif (!p.ok) return [{ json: { status: 'not_adopted', message: p.message } }];\nreturn [{ json: { status: 'adopted', playlist: p.target.name, role: p.role, songsAlreadyInPlaylist: p.target.tracks, message: 'Adopted \"' + p.target.name + '\" as ' + (p.role === 'unsorted' ? 'the unsorted playlist' : 'a category') + '. Its name, description and songs are unchanged, and it can be renamed freely because the curator tracks it by playlist ID.' } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000068",
+      "name": "Adopt Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2576,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Adopt one of the user's EXISTING playlists as a sorting category (or as the unsorted playlist). Provide the playlist's exact current name, the rule for which songs belong in it, whether it is the catch-all, and the role ('category' or 'unsorted'). The playlist's name, description and songs are not changed; the curator remembers it by its Spotify ID, so it can be renamed freely. Confirm with the user first.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "adopt",
+            "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `The exact current name of the existing playlist to adopt`, 'string') }}",
+            "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', `Plain-language rule for which songs belong in this playlist (genres, era, mood). Leave empty only for role unsorted.`, 'string', '') }}",
+            "isDefault": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('isDefault', `True only if this is the catch-all category for songs that fit no other category`, 'boolean', false) }}",
+            "role": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('role', `Either category (default) or unsorted`, 'string', 'category') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "isDefault",
+              "displayName": "isDefault",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000064",
+      "name": "Adopt playlist",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2224,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "description": "Re-check songs already sitting in a category playlist: re-classify up to maxSongs of the newest songs in that category (default: the catch-all category) and move the ones that belong in a different category. Use it when the user thinks songs were classified wrongly. Reports which songs moved.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "recheck",
+            "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `Name of the category whose songs should be re-checked. Leave empty to re-check the catch-all category.`, 'string', '') }}",
+            "maxSongs": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('maxSongs', `How many of the newest songs in that category to re-check. Default 100, maximum 100.`, 'number', 100) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "maxSongs",
+              "displayName": "maxSongs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "f3000000-0000-4000-8000-000000000069",
+      "name": "Re-check songs",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2416,
+        288
+      ],
+      "notesInFlow": true,
+      "notes": "⚙️ Pick this workflow"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "curator_playlists"
+        },
+        "returnAll": true
+      },
+      "id": "f3000000-0000-4000-8000-000000000070",
+      "name": "Read Registry",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        1248
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "notesInFlow": true,
+      "notes": "🗂️ Data table: curator_playlists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .map(i => i.json)\n  .filter(r => r && r.playlistId)\n  .map(r => ({\n    playlistId: String(r.playlistId),\n    role: String(r.role || 'category'),\n    rule: String(r.rule || ''),\n    isDefault: r.isDefault === true || String(r.isDefault).toLowerCase() === 'true'\n  }));\nreturn [{ json: { rows } }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000071",
+      "name": "Registry Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f3000000-0000-4000-8000-000000000213",
+              "leftValue": "={{ $json.toRegister.length > 0 ? 1 : 0 }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000072",
+      "name": "Needs Registration?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        1584
+      ],
+      "notesInFlow": true,
+      "notes": "Only true for playlists not yet in the data table"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.toRegister.map(x => ({ json: x }));"
+      },
+      "id": "f3000000-0000-4000-8000-000000000073",
+      "name": "Expand Registrations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "curator_playlists"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "playlistId": "={{ $json.playlistId }}",
+            "role": "={{ $json.role }}",
+            "rule": "={{ $json.rule }}",
+            "isDefault": "={{ $json.isDefault }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "playlistId",
+              "displayName": "playlistId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule",
+              "displayName": "rule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "isDefault",
+              "displayName": "isDefault",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000074",
+      "name": "Register Legacy",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        2144
+      ],
+      "notesInFlow": true,
+      "notes": "🗂️ Data table: curator_playlists"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "curator_playlists"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "playlistId": "={{ $json.id }}",
+            "role": "={{ $('Expand To Create').item.json.role }}",
+            "rule": "={{ $('Expand To Create').item.json.rule }}",
+            "isDefault": "={{ String($('Expand To Create').item.json.isDefault) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "playlistId",
+              "displayName": "playlistId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule",
+              "displayName": "rule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "isDefault",
+              "displayName": "isDefault",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000076",
+      "name": "Register Created",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2816,
+        1312
+      ],
+      "notesInFlow": true,
+      "notes": "🗂️ Data table: curator_playlists"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "curator_playlists"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "playlistId": "={{ $json.target.id }}",
+            "role": "={{ $json.role }}",
+            "rule": "={{ $json.rule }}",
+            "isDefault": "={{ String($json.isDefault) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "playlistId",
+              "displayName": "playlistId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule",
+              "displayName": "rule",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "isDefault",
+              "displayName": "isDefault",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000077",
+      "name": "Register Adopted",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2368,
+        1856
+      ],
+      "notesInFlow": true,
+      "notes": "🗂️ Data table: curator_playlists"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.spotify.com/v1/playlists/{{ $('Preflight').first().json.map[$json.category] }}/items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "spotifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"items\": {{ JSON.stringify($json.uris.map(u => ({uri: u}))) }}\n}",
+        "options": {}
+      },
+      "id": "f3000000-0000-4000-8000-000000000078",
+      "name": "Clear Existing Copies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2096,
+        3072
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000,
+      "notesInFlow": true,
+      "notes": "🔑 Spotify credential · prevents duplicates"
+    },
+    {
+      "parameters": {
+        "content": "## ✅ Setup checklist (about 10 minutes)\n\n### 1. Spotify credential 🔑\n1. Open [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and click **Create app**.\n2. In n8n, open any 🔑 node → **Credential → Create new → Spotify OAuth2 API**.\n3. Copy the **OAuth Redirect URL** from n8n into your Spotify app's **Redirect URIs**. Spotify only accepts `https://` or `http://127.0.0.1`, so on a local install open n8n at `http://127.0.0.1:5678` first.\n4. Paste the app's **Client ID** and **Client Secret** into n8n and click **Connect my account**.\n5. Select that credential on **all 12 🔑 nodes**. n8n often fills in the others for you, but look for warning icons.\n\nSpotify apps in development mode only work for accounts listed under the app's **User management**.\n\n### 2. AI credential 🤖\nAdd an **OpenRouter** API key to the two **Chat Model** nodes (sections 2 and 11). Any chat model works, so swap the nodes if you prefer OpenAI, Anthropic and so on.\n\n### 3. Data table 🗂️\nIn your **Personal space**, open the Data tables tab → **Create data table** → name it `curator_playlists` → add four String columns: `playlistId`, `role`, `rule`, `isDefault`. If you use another name, re-select the table in the four 🗂️ nodes.\n\n### 4. Tools ⚙️\nOpen the 6 tool nodes in section 3 and set **Workflow** to *this* workflow.\n\n### 5. Publish\nClick **Publish**. The tools run the *published* version, so publish again after every edit.\n\n### 6. Chat\nClick **Open chat** and tell the agent which categories you want.   ",
+        "height": 1000,
+        "width": 620,
+        "color": 6
+      },
+      "id": "5a0ca597-b7a6-4904-bc12-ef9d8e40b748",
+      "name": "Setup Checklist",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 💡 Good to know\n\n- **Nothing is removed from your Liked Songs.** Songs are copied into playlists.\n\n- **First sort vs. later sorts.** Your first run goes through your whole Liked Songs library. After that, as long as you keep the playlists it created, later runs will only handle the songs you’ve liked since the last sort, so it’s safe to run again whenever you like.\n\n- **Big libraries take time.** Roughly 20 seconds per 50 songs, so 1,500 songs take several minutes. Sorter runs show up separately in the **Executions** tab, not on this canvas.\n\n- **The AI classifies from title and artist**, because Spotify no longer shares genres. A few songs may land in Unsorted: ask to *retry the unsorted songs*.\n",
+        "height": 420,
+        "width": 620
+      },
+      "id": "b04b9cfb-b734-4fcb-bf16-735454c2c375",
+      "name": "Good To Know",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Chat trigger\nClick **Open chat** to talk to the agent.",
+        "height": 662,
+        "width": 278,
+        "color": 7
+      },
+      "id": "74282f68-caa0-4fe7-abd1-b5c4a383b838",
+      "name": "Section 1 Chat",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        864,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. AI agent\nReads your message and chooses a tool. Memory lets it follow the conversation.\n\n🤖 Add your AI credential to **Agent Chat Model**.",
+        "height": 662,
+        "width": 320,
+        "color": 7
+      },
+      "id": "25274231-620d-4a6f-a8f7-8592f15d8732",
+      "name": "Section 2 Agent",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Agent tools\nEach tool calls the sorter below. ⚙️ Pick **this workflow** in each one.\n\n- **List categories**: shows your category playlists\n- **Create categories**: creates new category playlists\n- **Adopt playlist**: uses a playlist you already have as a category\n- **Sort liked songs**: sorts every new liked song\n- **Retry unsorted songs**: gives songs in Unsorted a second look\n- **Re-check songs**: reviews songs already in a playlist and moves misplaced ones",
+        "height": 662,
+        "width": 1030,
+        "color": 7
+      },
+      "id": "3dde7084-eff9-4a75-9647-81eeec673641",
+      "name": "Section 3 Tools",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Load settings, playlists and categories\nReads your Spotify playlists (🔑 3 nodes) and the 🗂️ data table, then works out which playlists are categories. The **Settings** node holds the options you may want to change.",
+        "height": 480,
+        "width": 1480,
+        "color": 7
+      },
+      "id": "43c8daf1-f6d9-4f4c-8121-98a15f540d54",
+      "name": "Section 4 Load",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 5. List categories\nTells the agent which playlists are categories.",
+        "height": 243,
+        "width": 300,
+        "color": 7
+      },
+      "id": "5f1cd985-8172-49cf-9867-96bfe9894c3f",
+      "name": "Section 5 List",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 6. Create categories\nCreates new playlists (🔑 1 node) and saves them in the 🗂️ data table. Skips names that already exist.",
+        "height": 243,
+        "width": 1360,
+        "color": 7
+      },
+      "id": "5a1d2ba9-9334-42de-8812-bee8a8e3d5e7",
+      "name": "Section 6 Create",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 7. Check before sorting\nSort, retry and re-check start here. Checks that categories exist and prepares the playlist lookup.",
+        "height": 227,
+        "width": 544,
+        "color": 7
+      },
+      "id": "5b95beff-4ae8-430a-b636-5dd60925c836",
+      "name": "Section 7 Preflight",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 8. Adopt an existing playlist\nTurns a playlist you already own into a category. Its name and songs stay as they are. Saved in the 🗂️ data table.",
+        "height": 227,
+        "width": 840,
+        "color": 7
+      },
+      "id": "43b0e0ca-f4b6-44e9-a4d5-b05b47aa4f30",
+      "name": "Section 8 Adopt",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 9. Register older playlists (automatic)\nOnly runs when it finds curator playlists that are not in the 🗂️ data table yet. Safe to ignore.",
+        "height": 243,
+        "width": 656,
+        "color": 7
+      },
+      "id": "a4bb7d13-a9de-4b22-8529-1ea84a9bd861",
+      "name": "Section 9 Register",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 10. Find songs that are not sorted yet\nReads your playlists and your Liked Songs (🔑 4 nodes) and keeps only songs that are in no category yet. **Is Sort?** sends sorting up to section 11 and retry or re-check down to section 12.",
+        "height": 498,
+        "width": 1460,
+        "color": 7
+      },
+      "id": "40b5224e-b4fa-4601-a155-65c92d7186f5",
+      "name": "Section 10 Find",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 11. Classify with AI and add to playlists\nLoops over batches of 50 songs. The AI picks a category for each song, then the songs are added to their playlists (🔑 1 node). Repeats until nothing is left.\n\n🤖 Add your AI credential to **Classifier Chat Model**.",
+        "height": 494,
+        "width": 1460,
+        "color": 7
+      },
+      "id": "58cdb026-c4ed-48cd-8af4-27029863ba9d",
+      "name": "Section 11 Classify",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        2352
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 12. Retry and re-check\nGives songs in Unsorted (or another playlist) a second look with the AI, adds the ones it can now place to the right playlist and removes them from the old one (🔑 3 nodes).",
+        "height": 260,
+        "width": 2700,
+        "color": 7
+      },
+      "id": "9e0877e0-f480-4565-81c4-176878c126af",
+      "name": "Section 12 Retry",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        2992
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 13. Final report\nEvery path ends here. This summary is what the agent tells you.",
+        "height": 260,
+        "width": 300,
+        "color": 7
+      },
+      "id": "a5f249f6-fc1a-409f-876c-09a37ecaaa89",
+      "name": "Section 13 Report",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        3008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Load Categories').first().json }];"
+      },
+      "id": "f3000000-0000-4000-8000-000000000075",
+      "name": "Restore Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        2144
+      ]
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List categories": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create categories": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort liked songs": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry unsorted songs": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Me": {
+      "main": [
+        [
+          {
+            "node": "Get Playlist Total",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Playlist Total": {
+      "main": [
+        [
+          {
+            "node": "Plan Playlist Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Playlist Pages": {
+      "main": [
+        [
+          {
+            "node": "Fetch My Playlists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch My Playlists": {
+      "main": [
+        [
+          {
+            "node": "Load Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Format Category List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Creation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan Adoption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Creation": {
+      "main": [
+        [
+          {
+            "node": "Any To Create?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any To Create?": {
+      "main": [
+        [
+          {
+            "node": "Expand To Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand To Create": {
+      "main": [
+        [
+          {
+            "node": "Create Playlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight": {
+      "main": [
+        [
+          {
+            "node": "Preflight OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight OK?": {
+      "main": [
+        [
+          {
+            "node": "Plan Count Requests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Count Requests": {
+      "main": [
+        [
+          {
+            "node": "Get Playlist Counts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Playlist Counts": {
+      "main": [
+        [
+          {
+            "node": "Plan Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Pages": {
+      "main": [
+        [
+          {
+            "node": "Fetch Playlist Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Playlist Pages": {
+      "main": [
+        [
+          {
+            "node": "Build Known Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Known Set": {
+      "main": [
+        [
+          {
+            "node": "Is Sort?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sort?": {
+      "main": [
+        [
+          {
+            "node": "Get Liked Total",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Retry Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Liked Total": {
+      "main": [
+        [
+          {
+            "node": "Plan Liked Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Liked Pages": {
+      "main": [
+        [
+          {
+            "node": "Fetch Liked Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Liked Pages": {
+      "main": [
+        [
+          {
+            "node": "Find Unknown Songs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Unknown Songs": {
+      "main": [
+        [
+          {
+            "node": "Any Unknown Songs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Unknown Songs?": {
+      "main": [
+        [
+          {
+            "node": "Batch Index",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Index": {
+      "main": [
+        [
+          {
+            "node": "Take Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Throttle Before Classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Throttle Before Classify": {
+      "main": [
+        [
+          {
+            "node": "Classify Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classifier Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Batch",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Reclassify Fallback",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Batch": {
+      "main": [
+        [
+          {
+            "node": "Parse & Group by Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Group by Category": {
+      "main": [
+        [
+          {
+            "node": "Add To Playlist (Batched)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add To Playlist (Batched)": {
+      "main": [
+        [
+          {
+            "node": "Consolidate Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidate Batch": {
+      "main": [
+        [
+          {
+            "node": "More Batches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More Batches?": {
+      "main": [
+        [
+          {
+            "node": "Batch Index",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Retry Batch": {
+      "main": [
+        [
+          {
+            "node": "Any Unsorted Songs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Unsorted Songs?": {
+      "main": [
+        [
+          {
+            "node": "Build Retry Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Retry Prompt": {
+      "main": [
+        [
+          {
+            "node": "Reclassify Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reclassify Fallback": {
+      "main": [
+        [
+          {
+            "node": "Parse Retry Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Retry Results": {
+      "main": [
+        [
+          {
+            "node": "Any Resolved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Resolved?": {
+      "main": [
+        [
+          {
+            "node": "Remove Moved From Source",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Reallocated Tracks": {
+      "main": [
+        [
+          {
+            "node": "Consolidate Reallocation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Adoption": {
+      "main": [
+        [
+          {
+            "node": "Can Adopt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Adopt?": {
+      "main": [
+        [
+          {
+            "node": "Register Adopted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Adopt Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adopt playlist": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Take Batch": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-check songs": {
+      "ai_tool": [
+        [
+          {
+            "node": "Spotify Curator Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Read Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Registry": {
+      "main": [
+        [
+          {
+            "node": "Registry Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registry Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Get Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Categories": {
+      "main": [
+        [
+          {
+            "node": "Needs Registration?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Registration?": {
+      "main": [
+        [
+          {
+            "node": "Expand Registrations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Restore Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Registrations": {
+      "main": [
+        [
+          {
+            "node": "Register Legacy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Legacy": {
+      "main": [
+        [
+          {
+            "node": "Restore Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Playlist": {
+      "main": [
+        [
+          {
+            "node": "Register Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Created": {
+      "main": [
+        [
+          {
+            "node": "Create Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Adopted": {
+      "main": [
+        [
+          {
+            "node": "Adopt Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Moved From Source": {
+      "main": [
+        [
+          {
+            "node": "Expand Adds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Adds": {
+      "main": [
+        [
+          {
+            "node": "Clear Existing Copies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Existing Copies": {
+      "main": [
+        [
+          {
+            "node": "Add Reallocated Tracks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidate Reallocation": {
+      "main": [
+        [
+          {
+            "node": "Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Context": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

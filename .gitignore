@@ -1,0 +1,15 @@
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets: never commit these
+.env
+.env.*
+*.pem
+*.key
+
+# Exports from a live n8n instance (they can contain credential references).
+# Only the sanitized file in workflow/ belongs in this repo.
+*-live.json
+*-raw.json
