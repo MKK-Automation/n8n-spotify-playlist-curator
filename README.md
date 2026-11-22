@@ -2,6 +2,8 @@
 
 **Chat with an AI agent that sorts your Spotify Liked Songs into playlists, in one prompt.**
 
+An **n8n workflow** and **AI agent** that works as a chat-based **Spotify playlist manager**: it uses an LLM to organise your **Liked Songs** into playlists automatically, with no code.
+
 Tell the agent how you like your music organised ("house, techno and everything else") and it classifies your whole Liked Songs library into those playlists. Like new songs later, ask again, and only the new ones are processed.
 
 ## What it does
@@ -59,6 +61,10 @@ Details, including a diagram: [docs/how-it-works.md](docs/how-it-works.md).
 - **Publish after editing.** The tools call the *published* version of the workflow.
 
 More in [docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Topics
+
+`n8n` `n8n-workflow` `n8n-template` `spotify` `spotify-api` `playlist-manager` `liked-songs` `music` `ai-agent` `ai-automation` `llm` `openrouter` `deepseek` `automation` `no-code`
 
 ## License
 
